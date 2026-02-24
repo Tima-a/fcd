@@ -8,12 +8,16 @@ Example of Functional Continuous Decomposition on the Bitcoin dataset using a 6-
 ### Prerequisites
 * **Python:** 3.9
 * **Libraries:**
-    * `numpy` 2.0
+    * `numpy` 2.0.2
     * `jax` 0.4.30
-    * `ruptures` 1.1.10
+    * `jaxlib` 0.4.30
     * `scipy` 1.13.1
     * `matplotlib` 3.9.4
     * `sympy` 1.14.0
+    * `tensorflow` 2.20.0
+    * `scikit-learn` 1.6.1
+    * `pandas` 2.3.0
+    * `python-dateutil` 2.9.0.post0
 
 For quick-start, run this code in bash:
 ```bash
@@ -348,3 +352,4 @@ Primary tasks are:
 Teymur Aghayev<br>
 Email: teymur.aghayev@stud.vilniustech.lt <br>
 Linkedin: www.linkedin.com/in/teymur-aghayev-44aa34277
+
