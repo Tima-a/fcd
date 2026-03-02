@@ -5,7 +5,6 @@ import utility
 from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
 import mode_fitting
-import GAF
 import time
 import utility_guesses
 import pandas as pd
@@ -51,11 +50,9 @@ def perform_mode_fitting(mode_fitting_runner, train_data, window_size):
     mode_fitting_runner.run()
     derivative_modes=mode_fitting_runner.calculate_derivatives()
     y_fit_modes=mode_fitting_runner.calculate_y_fit_modes()
-    phi=GAF.compute_phase_new(y_fit_modes, derivative_modes,train_data)
     y_raw_col = train_data.reshape(-1, 1)
     modes_matrix = np.stack(y_fit_modes, axis=1) 
     derivs_matrix = np.stack(derivative_modes, axis=1)
-    phase_matrix = np.stack(phi, axis=1)
     train_data_mean=np.full((window_size,1),np.mean(train_data))
     
     feature_matrix = [y_raw_col, modes_matrix,derivs_matrix]
