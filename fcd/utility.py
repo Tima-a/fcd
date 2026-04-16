@@ -271,11 +271,18 @@ GLOBAL_PRECISION=3
 def fmt(value, precision=None):
     p = precision if precision is not None else GLOBAL_PRECISION
     return f"{value:.{p}f}"
-def validate_inputs(x_data, y_data, requested_modes, optimization_settings_args,settings_args,continuity_args):
+def validate_inputs(x_data, y_data, requested_modes, model, initial_guesses_function, optimization_settings_args,settings_args,continuity_args):
     if len(x_data) != len(y_data):
         raise ValueError(f"Dataset mismatch: x_data length({len(x_data)}) must equal y_data length({len(y_data)})")
     if len(x_data) < 3 or len(y_data) < 3:
         raise ValueError(f"x or y dataset length can't be less than 3, got ({len(x_data)},{len(y_data)})")
+    sign_model=inspect.signature(model)
+    num_parameters=len(sign_model.parameters)-1 # because x is not counted
+    empty_arr=np.arange(10)
+    guess, lo, up = initial_guesses_function(empty_arr,empty_arr,1.0,empty_arr,empty_arr,1,1,2)
+    lengths_match = (num_parameters == len(guess) == len(lo) == len(up))
+    if not lengths_match:
+        raise ValueError(f"Arrays are not the same length for model, initial guess functions or lower, upper bounds")
     min_scale_y=1e-3
     max_scale_y=1e30
     min_scale_x=1e-10

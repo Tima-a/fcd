@@ -344,7 +344,6 @@ def lm_fit(params_init, x_data, y, lower, upper, changepoint_jax, segment_length
         prev_params (jnp.ndarray): JAX array of previous batch last segment's full parameters
         num_segments (jnp.int32): Number of segments to fit in this mode
         leftover_batch (jnp.int32): 1 if a partial batch exists, 0 otherwise.
-        batch_std ()
         max_seg_len (int): Maximum segment length in this mode for residual array padding
         fitting_config (NamedTuple): Stores various static parameters for fitting
         lam (jnp.float64): Initial lambda value to start optimization
@@ -565,12 +564,10 @@ def lm_start(params, x_data_full_np, y_padded, lower, upper, changepoint_list_or
         if not last_batch:
             y_values = y_padded[changepoint_list_original[batch][0]:changepoint_list_original[batch+1][1]+1]
             batch_std=np.std(y_values) + 1e-12
-            batch_size=len(y_values)
 
         else:
             y_values = y_padded[changepoint_list_original[batch][0]:changepoint_list_original[batch][-1]]
             batch_std=np.std(y_values) + 1e-12 
-            batch_size=len(y_values)
 
         pad_zeros=functions_config.MODEL_FULL_PARAMETER_COUNT+functions_config.MODEL_REDUCED_PARAMETER_COUNT*fitting_config.batch_size-len(forward_fit_params_array)
 

@@ -11,6 +11,7 @@ import utility
 from utility import fmt
 from collections import namedtuple
 import hashlib
+import sympy as sp
 
 jax.config.update("jax_enable_x64", True)
 class FCD:
@@ -226,7 +227,8 @@ class FCD:
                     
                     readable_formula = utility.fast_format(raw_deriv, 3).simplify()
                     print(f"Segment {s+1} from x = {fmt(self._x_dataset_unscaled[self.all_changepoints[m][s]])} to {fmt(self._x_dataset_unscaled[self.all_changepoints[m][s+1]-last_start])}:")
-                    
+                    if not self.all_changepoints[m][s] == 0:
+                        readable_formula = readable_formula.subs(sp.Symbol('x'), sp.Symbol(f'(x-{self.all_changepoints[m][s]})'))
                     print(f"f'(x) = {readable_formula}")
                 derivatives_mode.extend(deriv_vals)
     
@@ -286,6 +288,8 @@ class FCD:
                     
                     readable_formula = utility.fast_format(raw_integral, 3).simplify()
                     print(f"Segment {s+1} from x = {fmt(self._x_dataset_unscaled[self.all_changepoints[m][s]])} to {fmt(self._x_dataset_unscaled[self.all_changepoints[m][s+1]-last_start])}:")
+                    if not self.all_changepoints[m][s] == 0:
+                        readable_formula = readable_formula.subs(sp.Symbol('x'), sp.Symbol(f'(x-{self.all_changepoints[m][s]})'))
                     print(f"Integral of f(x) = {readable_formula}")
             integrals_modes.append(np.array(integrals_mode))
             
@@ -327,6 +331,8 @@ class FCD:
                     segment_function=segment_function.replace(self.parameter_names[i], val_str)
                 segment_function = segment_function.replace('sp.', '')
                 segment_function = segment_function.replace('+ -', '- ')
+                if not self.all_changepoints[m][s] == 0:
+                    segment_function = segment_function.replace('x', f'(x-{self.all_changepoints[m][s]})')
                 print(f"Segment {s+1} from x = {fmt(self._x_dataset_unscaled[self.all_changepoints[m][s]])} to {fmt(self._x_dataset_unscaled[self.all_changepoints[m][s+1]-last_start])}:")
                 print(f"f(x) = {segment_function}")
     def show_plot(self):
@@ -456,7 +462,7 @@ class FCD:
             print(f"JAX compilation is triggered as shapes/variables are different.")
             self._initialize()
             self._compiled_signatures.append(hash_text)
-        utility.validate_inputs(self._x_dataset, self._y_dataset, self._number_of_modes, self._optimization_settings_args,self._settings_args, self._continuity_args)
+        utility.validate_inputs(self._x_dataset, self._y_dataset, self._number_of_modes, self._model, self._initial_guesses_function, self._optimization_settings_args,self._settings_args, self._continuity_args)
 
         self._generate_initial_guesses()
         params_list_batched, changepoint_list_batched,lower_list_batched,upper_list_batched,segment_length_list_batched = utility.batch_transformation(self._number_of_modes,self.all_changepoints,self.all_initial_guesses,self.all_lower_bounds,self.all_upper_bounds, self._fitting_config)
