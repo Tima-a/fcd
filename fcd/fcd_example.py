@@ -6,6 +6,7 @@ import numpy as np
 #Set datasets
 y=np.load(f"test_datasets/cryptocoin_tests/test18.npy")[:1000]
 x=np.arange(len(y))
+settings_args={"multi_scale": False, 'num_segments_single': 1}
 #Initialize FCD runner
 fcd = FCD(
     x_dataset=x, y_dataset=y,

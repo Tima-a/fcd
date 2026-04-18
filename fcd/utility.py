@@ -276,6 +276,11 @@ def validate_inputs(x_data, y_data, requested_modes, model, initial_guesses_func
         raise ValueError(f"Dataset mismatch: x_data length({len(x_data)}) must equal y_data length({len(y_data)})")
     if len(x_data) < 3 or len(y_data) < 3:
         raise ValueError(f"x or y dataset length can't be less than 3, got ({len(x_data)},{len(y_data)})")
+    if not settings_args['multi_scale']:
+        if settings_args['num_segments_single']*5.0>len(y_data):
+            print(f"Warning: Number of segments is too high ({settings_args['num_segments_single']} segments for {len(y_data)} points)")
+        if settings_args['num_segments_single'] < 1:
+            raise ValueError(f"Number of segments cannot be lower than 1 (got {settings_args['num_segments_single']})")
     sign_model=inspect.signature(model)
     num_parameters=len(sign_model.parameters)-1 # because x is not counted
     empty_arr=np.arange(10)
@@ -413,14 +418,17 @@ def show_fitting_plot(max_mode, all_changepoints, x_data_full_np,y_data_full_np,
     """
     Shows fitting plot for all modes with original dataset scattered and PELT detected changepoints.
     """
-    cols=2
+    cols = 1 if max_mode == 1 else 2
     rows = int(np.ceil(max_mode / cols)) 
+    figsize=(5 * cols, 4 * rows)
+    if max_mode==1:
+        figsize=(10 * cols, 5 * rows)
+    fig, axes = plt.subplots(rows, cols, figsize=figsize) 
     
-    fig, axes = plt.subplots(rows, cols, figsize=(5 * cols, 4 * rows)) 
-    
-    if rows * cols == 1:
-        axes = np.array([axes])
-    axes_flat = axes.flatten()
+    if max_mode == 1:
+        axes_flat = [axes]
+    else:
+        axes_flat = axes.flatten()
     
     for mode in range(max_mode):
         ax = axes_flat[mode]
@@ -462,9 +470,10 @@ def show_fitting_plot(max_mode, all_changepoints, x_data_full_np,y_data_full_np,
         else:
             ax.set_xlim(x_data_full_np[0] + x_padding, x_data_full_np[-1] - x_padding)
         ax.grid(True, alpha=0.35)
-    
-    for i in range(max_mode, rows * cols):
-        fig.delaxes(axes_flat[i])
+
+    if max_mode > 1:
+        for i in range(max_mode, rows * cols):
+            fig.delaxes(axes_flat[i])
     fig.supylabel('Voltage ($\mu V$)', fontsize=12, x=0.05)
     fig.supxlabel('Time ($s$)', fontsize=12)
     #fig.supylabel('Voltage ($\mu$V)', fontsize=12, x=0.05)
@@ -564,18 +573,24 @@ def modify_uniform_num_segments(max_mathematical_mode, N_full):
         num_segments_uniform.append(num_seg)
     return num_segments_uniform
 
-def generate_uniform_segmentation(max_mode, y_data_full_np, num_segments_list):
+def generate_uniform_segmentation(max_mode, y_data_full_np, num_segments_list, multi_scale, num_segments_single):
     all_changepoints = []
     N = len(y_data_full_np)
     
-    for i in range(max_mode):
-        if i==max_mode-1:
-            all_changepoints.append([0, N])
-            continue
-        k=num_segments_list[i]
-        cp = np.unique(np.linspace(0, N, k + 1).astype(int))
-        
+    if multi_scale:
+        for i in range(max_mode):
+            if i==max_mode-1:
+                all_changepoints.append([0, N])
+                continue
+            k=num_segments_list[i]
+            cp = np.unique(np.linspace(0, N, k + 1).astype(int))
+            
+            all_changepoints.append(cp.tolist())
+    elif num_segments_single>1:
+        cp = np.unique(np.linspace(0, N, num_segments_list[0]+1).astype(int))
         all_changepoints.append(cp.tolist())
+    else:
+        all_changepoints.append([0, N])
     return all_changepoints
 def get_metrics(segments_params_modes, x_data_full_np,y_data_full_np,all_changepoints, functions_config, verbose):
     srmse_scores_modes=[]
@@ -623,13 +638,13 @@ def get_metrics(segments_params_modes, x_data_full_np,y_data_full_np,all_changep
                     last_start=1
                 print(f"Segment {k} from {fmt(x_data_full_np[all_changepoints[m][k]])} to {fmt(x_data_full_np[all_changepoints[m][k+1]-last_start])} finished with SRMSE of {fmt(mode_srmse[k])} and RMSE of {fmt(mode_rmse[k])}")
             if mode_srmse:
-                print(f"Max SRMSE at segment {mode_srmse.index(np.max(np.array(mode_srmse)))} with value of {np.max(np.array(mode_srmse))}")
+                print(f"Max SRMSE of {np.max(np.array(mode_srmse))} at segment {mode_srmse.index(np.max(np.array(mode_srmse)))}")
     if verbose>0:
         for i in range(len(srmse_scores_modes)):
             all_srmse_mode=np.array(srmse_scores_modes[i])
             all_rmse_mode=np.array(rmse_scores_modes[i])
-            output = (f"Mode {i+1}: Max SRMSE {fmt(np.max(all_srmse_mode))} at RMSE {fmt(all_rmse_mode[np.argmax(all_srmse_mode)])} at range {fmt(data_scales_modes[i][np.argmax(all_srmse_mode)])}, "
-              f"Max RMSE {fmt(np.max(all_rmse_mode))} at range {fmt(data_scales_modes[i][np.argmax(all_rmse_mode)])} "
+            output = (f"Mode {i+1}: Max SRMSE {fmt(np.max(all_srmse_mode))} (with RMSE {fmt(all_rmse_mode[np.argmax(all_srmse_mode)])}, range {fmt(data_scales_modes[i][np.argmax(all_srmse_mode)])}), "
+              f"Max RMSE {fmt(np.max(all_rmse_mode))} (range {fmt(data_scales_modes[i][np.argmax(all_rmse_mode)])}), "
               f"Average SRMSE {fmt(np.mean(np.array(all_srmse_mode)))}, Average RMSE {fmt(np.mean(np.array(all_rmse_mode)))}")
             print(output)
             all_srmse_flat = [item for sublist in srmse_scores_modes for item in sublist]
@@ -658,7 +673,7 @@ def get_fit_values(results_ordered):
         current_res+=1
     return segment_lists_params
 
-def generate_bucketing(max_mode,all_changepoints, custom_benchmarks, config):
+def generate_bucketing(max_mode,all_changepoints, custom_benchmarks, config, multi_scale):
     """
     Generates bucketing list of maximum segment length for optimization
 
@@ -676,14 +691,20 @@ def generate_bucketing(max_mode,all_changepoints, custom_benchmarks, config):
     num_batches=[]
     max_segment_lengths=[]
 
-    for j2 in range(max_mode-1):
-        changepoints_to_fit=len(all_changepoints[j2])-1
-        segment_lengths_static_tuple = tuple([all_changepoints[j2][j+1] - all_changepoints[j2][j] + 1 for j in range(changepoints_to_fit)])
-        max_segment_lengths.append(max(segment_lengths_static_tuple))
-        leftover_batch=1
-        if changepoints_to_fit%config.batch_size==0 or changepoints_to_fit%config.batch_size==1: 
-            leftover_batch=0
-        num_batches.append(changepoints_to_fit//config.batch_size+leftover_batch)
+    if multi_scale:
+        for m in range(max_mode-1):
+            changepoints_to_fit=len(all_changepoints[m])-1
+            segment_lengths_static_tuple = tuple([all_changepoints[m][s+1] - all_changepoints[m][s] + 1 for s in range(changepoints_to_fit)])
+            max_segment_lengths.append(max(segment_lengths_static_tuple))
+            leftover_batch=1
+            if changepoints_to_fit%config.batch_size==0 or changepoints_to_fit%config.batch_size==1: 
+                leftover_batch=0
+            num_batches.append(changepoints_to_fit//config.batch_size+leftover_batch)
+    else:
+        changepoints_to_fit=len(all_changepoints[0])-1
+        segment_lengths_static_tuple = tuple([all_changepoints[0][s+1] - all_changepoints[0][s] + 1 for s in range(changepoints_to_fit)])
+        max_segment_lengths = [max(segment_lengths_static_tuple)]
+        return max_segment_lengths,max_segment_lengths
     if max_segment_lengths==[]:
         return [],[]
     changepoint_bucketing = find_optimal_configuration(
@@ -696,7 +717,7 @@ def generate_bucketing(max_mode,all_changepoints, custom_benchmarks, config):
 
     return max_segment_lengths,modes_length_bucketing
 
-def batch_transformation(max_mode, all_changepoints,all_initial_guesses,all_lower_bounds,all_upper_bounds, config):
+def batch_transformation(max_mode, all_changepoints,all_initial_guesses,all_lower_bounds,all_upper_bounds, config,multi_scale, num_segments_single):
     """
     Transforms initial guesses, changepoints, lower, upper bounds, segment lengths arrays into batches.
 
@@ -716,7 +737,7 @@ def batch_transformation(max_mode, all_changepoints,all_initial_guesses,all_lowe
     upper_list_all=[]
     segment_length_list_all=[]
     for mode in range(max_mode):
-        if not mode==max_mode-1:
+        if not mode==max_mode-1 or (not multi_scale and num_segments_single>1):
             changepoints_to_fit=len(all_changepoints[mode])-1
             x_fit_list=[]
             y_fit_list=[]
