@@ -15,7 +15,6 @@ fcd = FCD(
     parallel=True,
     verbose=0
 )
-fcd.run()
 num_speed_tests=5
 test_points=[10,100,1000,10000,1e5]
 for k in range(num_speed_tests):

@@ -35,7 +35,8 @@ class FCD:
                 unscaling_function (Callable): Unscaling function which has to be defined if custom_fitting is used.
                 requested_modes (int): Number of modes to decompose. If None, number of modes is calculated using logarithmic equation.
                 warmup (bool): Use warmup. Defaults to True
-                uniform_num_segments (array-like, optional): Custom uniform segmentation for each mode. 
+                non_uniform (bool): Use non-uniform segmentation. If true, for multi-scale analysis user has to provide all changepoints for each mode, for single analysis one changepoint array.
+                changepoints_non_uniform (array-like, optional): Changepoint indices for non-uniform segmentation. 
                 hardware_factor (float): Multiplier for bucketing factor. Defaults to 1.0
             optimization_settings_args (dict): Parameters for the Levenberg-Marquardt solver.
                 batch_size (int): Number of segments processed in one batch during Levenberg-Marquardt optimization. Defaults to 5. 
@@ -61,7 +62,7 @@ class FCD:
         if optimization_settings_args:
             self._optimization_settings_args.update(optimization_settings_args)
 
-        default_settings_args={'multi_scale': True, 'num_segments_single': 1, 'scaling': True, 'unscaling_function': None, 'requested_modes': None, 'warmup': True, 'uniform_num_segments': None, 'hardware_factor': 1.0}
+        default_settings_args={'multi_scale': True, 'num_segments_single': 1, 'scaling': True, 'unscaling_function': None, 'requested_modes': None, 'warmup': True, 'non_uniform': False, 'changepoints_non_uniform': None, 'hardware_factor': 1.0}
         self._settings_args=default_settings_args
         if settings_args:
             self._settings_args.update(settings_args)
@@ -76,7 +77,7 @@ class FCD:
             self._x_dataset=utility.standard_scaling(x_dataset)
         self._model = model
         self._initial_guesses_function = initial_guesses_function
-        if not self._continuity_args['custom_fitting']:
+        if not self._continuity_args['custom_fitting'] and self._settings_args['scaling']:
             self._settings_args['unscaling_function']=utility.unscale_map[model]
         self._number_of_modes = self._settings_args['requested_modes']
         self._last_hash=None
@@ -108,11 +109,12 @@ class FCD:
             full_initial_p0=[]
             changepoint = np.array(self.all_changepoints[mode])
             changepoints_to_fit = len(changepoint) - 1
-            if not mode == self._number_of_modes-1 or (not self._settings_args['multi_scale'] and self._settings_args['num_segments_single']>1):
+            last_mode=False
+            if not mode == self._number_of_modes-1 or (not self._settings_args['multi_scale'] and self._settings_args['num_segments_single']>1) or self._settings_args['non_uniform']:
                 for i in range(changepoints_to_fit):
                     segment_x = self._x_dataset[changepoint[i]:changepoint[i+1]]-self._x_dataset[changepoint[i]] #zero-centered
                     segment_y = self._y_dataset[changepoint[i]:changepoint[i+1]]
-                    initial_p0, initial_lower_bound, initial_upper_bound=self._functions_config.initial_guesses_function(self._x_dataset,self._y_dataset,dataset_std, segment_x,segment_y, i, mode, self._number_of_modes)
+                    initial_p0, initial_lower_bound, initial_upper_bound=self._functions_config.initial_guesses_function(self._x_dataset,self._y_dataset,dataset_std, segment_x,segment_y, i, mode, last_mode)
                     p0_np = np.asarray(initial_p0)
                     lb_np = np.asarray(initial_lower_bound)
                     ub_np = np.asarray(initial_upper_bound)
@@ -136,9 +138,10 @@ class FCD:
                     initial_lower_bounds.append(initial_lower_bound)
                     initial_upper_bounds.append(initial_upper_bound)
             else:
+                last_mode=True
                 segment_x = self._x_dataset-self._x_dataset[0]
                 segment_y = self._y_dataset
-                initial_p0, initial_lower_bound, initial_upper_bound=self._functions_config.initial_guesses_function(self._x_dataset,self._y_dataset,dataset_std,segment_x, segment_y, 0, mode,self._number_of_modes)
+                initial_p0, initial_lower_bound, initial_upper_bound=self._functions_config.initial_guesses_function(self._x_dataset,self._y_dataset,dataset_std,segment_x, segment_y, 0, mode,last_mode)
                 initial_p0=np.clip(initial_p0, initial_lower_bound, initial_upper_bound)
                 full_initial_p0 = [initial_p0]
                 initial_p0s = initial_p0
@@ -165,7 +168,7 @@ class FCD:
         Returns:
             dict: {mode index, full parameters for all segments}
         """
-        if not mode == self._number_of_modes - 1 or (not self._settings_args['multi_scale'] and self._settings_args['num_segments_single']>1):
+        if not mode == self._number_of_modes - 1 or (not self._settings_args['multi_scale'] and self._settings_args['num_segments_single']>1) or self._settings_args['non_uniform']:
             changepoints_to_fit = len(self.all_changepoints[mode]) - 1
     
             p0_unconstrained_jax_new = utility.to_unconstrained(self._params_list_batched[mode], self._lower_list_batched[mode], self._upper_list_batched[mode])
@@ -372,16 +375,24 @@ class FCD:
         """
         self._model=model
         self._initial_guesses_function=init_guess_model
-        if not self._continuity_args['custom_fitting']:
+        if not self._continuity_args['custom_fitting'] and self._settings_args['scaling']:
             self._settings_args['unscaling_function']=utility.unscale_map[model]
         else:
             self._settings_args['unscaling_function']=unscaling_function
+    def update_settings(self, settings_args, optimization_settings_args, continuity_args):
+        self._settings_args.update(settings_args)
+        self._optimization_settings_args.update(optimization_settings_args)
+        self._continuity_args.update(continuity_args)
     def _warmup_jit(self):
         max_padding_params=self._functions_config.MODEL_FULL_PARAMETER_COUNT+self._functions_config.MODEL_REDUCED_PARAMETER_COUNT*self._fitting_config.batch_size
         max_padding_changepoint=self._fitting_config.batch_size+3
-        max_padding_segment_lengths=self._fitting_config.batch_size
-        y_fit_full=np.pad(self._y_dataset,(0, len(self._y_dataset)), mode='constant', constant_values=self._y_dataset[-1])
-        x_fit_full=np.pad(self._x_dataset,(0, len(self._x_dataset)), mode='constant', constant_values=self._x_dataset[-1])
+        pad_arr=[]
+        if self._max_segment_lengths:
+            pad_arr=self._max_segment_lengths[-1]
+        else:
+            pad_arr=len(self._y_dataset)
+        y_fit_full=np.pad(self._y_dataset,(0, pad_arr+1), mode='constant', constant_values=0.0)
+        x_fit_full=np.pad(self._x_dataset,(0, pad_arr+1), mode='constant', constant_values=0.0)
         x_data_jnp=jnp.array(x_fit_full,dtype=utility.DTYPE)
         y_full_jnp=jnp.array(y_fit_full, dtype=utility.DTYPE)
 
@@ -398,7 +409,6 @@ class FCD:
                 lower=jnp.zeros(max_padding_params,dtype=utility.DTYPE),
                 upper=jnp.zeros(max_padding_params,dtype=utility.DTYPE),
                 changepoint_jax=jnp.zeros(max_padding_changepoint,dtype=utility.DTYPE),
-                segment_lengths_jax=jnp.zeros(max_padding_segment_lengths, dtype=utility.DTYPE),
                 batch_index=jnp.array(0,dtype=utility.INTTYPE),
                 prev_params=jnp.zeros(self._functions_config.MODEL_FULL_PARAMETER_COUNT), 
                 num_segments=jnp.array(100, dtype=utility.INTTYPE), 
@@ -428,27 +438,31 @@ class FCD:
         self._fitting_config=fitting_config
         self._functions_config=functions_config
         N_full = len(self._y_dataset)
-        if self._settings_args['multi_scale']:
-            if self._number_of_modes==None:
-                self._number_of_modes = utility.calculate_max_mode(N_full)
+        if self._settings_args['non_uniform']==False:
+            if self._settings_args['multi_scale']:
+                num_segments_uniform=utility.modify_uniform_num_segments(N_full)
+                if self._number_of_modes==None:
+                    self._number_of_modes=len(num_segments_uniform)
+                else:
+                    self._number_of_modes=self._number_of_modes
+                if not self._settings_args['requested_modes']==None:
+                    num_segments_uniform = utility.squash_into_modes(num_segments_uniform, self._number_of_modes)
             else:
-                self._number_of_modes=self._number_of_modes
-            max_mathematical_mode=utility.calculate_max_mode(N_full)
-            num_segments_uniform=utility.modify_uniform_num_segments(max_mathematical_mode, N_full)
-            if not self._settings_args['requested_modes']==None:
-                num_segments_uniform = utility.squash_into_modes(num_segments_uniform, self._number_of_modes)
-        else:
-            self._number_of_modes=1
-            num_segments_uniform=[self._settings_args['num_segments_single']]
-        if self._settings_args['uniform_num_segments'] is None:
+                self._number_of_modes=1
+                num_segments_uniform=[self._settings_args['num_segments_single']]
             all_changepoints=utility.generate_uniform_segmentation(self._number_of_modes,self._y_dataset, num_segments_uniform, self._settings_args['multi_scale'],self._settings_args['num_segments_single'])
-        else:
-            all_changepoints=utility.generate_uniform_segmentation(self._number_of_modes,self._y_dataset, self._settings_args['uniform_num_segments'], self._settings_args['multi_scale'],self._settings_args['num_segments_single'])
+            self._num_segments_uniform=num_segments_uniform
+        elif self._settings_args['non_uniform']:
+            arr_ch=self._settings_args['changepoints_non_uniform']
+            if isinstance(arr_ch, list) and len(arr_ch) > 0 and not isinstance(arr_ch[0], list):
+                self._settings_args['changepoints_non_uniform']=[self._settings_args['changepoints_non_uniform']]
+            self._number_of_modes=len(self._settings_args['changepoints_non_uniform'])
+            all_changepoints=self._settings_args['changepoints_non_uniform']
+
         self.all_changepoints=all_changepoints
         custom_benchmarks = [(51, 0.0399), (221, 0.0760), (1751, 0.43)]
         custom_benchmarks = utility.adjust_by_hardware_bucketing(custom_benchmarks, self._settings_args['hardware_factor'])
-        max_segment_lengths,modes_length_bucketing = utility.generate_bucketing(self._number_of_modes, all_changepoints, custom_benchmarks, self._fitting_config, self._settings_args['multi_scale'])
-        self._num_segments_uniform=num_segments_uniform
+        max_segment_lengths,modes_length_bucketing = utility.generate_bucketing(self._number_of_modes, all_changepoints, custom_benchmarks, self._fitting_config, self._settings_args['multi_scale'],self._settings_args['non_uniform'])
         self._max_segment_lengths=max_segment_lengths
         self._modes_length_bucketing=modes_length_bucketing
 
@@ -471,7 +485,7 @@ class FCD:
         utility.validate_inputs(self._x_dataset, self._y_dataset, self._number_of_modes, self._model, self._initial_guesses_function, self._optimization_settings_args,self._settings_args, self._continuity_args)
 
         self._generate_initial_guesses()
-        params_list_batched, changepoint_list_batched,lower_list_batched,upper_list_batched,segment_length_list_batched = utility.batch_transformation(self._number_of_modes,self.all_changepoints,self.all_initial_guesses,self.all_lower_bounds,self.all_upper_bounds, self._fitting_config,self._settings_args['multi_scale'],self._settings_args['num_segments_single'])
+        params_list_batched, changepoint_list_batched,lower_list_batched,upper_list_batched,segment_length_list_batched = utility.batch_transformation(self._number_of_modes,self.all_changepoints,self.all_initial_guesses,self.all_lower_bounds,self.all_upper_bounds, self._fitting_config,self._settings_args['multi_scale'],self._settings_args['num_segments_single'], self._settings_args['non_uniform'])
 
         if self._verbose>0:
             print(f"Running FCD on {utility.get_name(self._model)} with initial guess function {utility.get_name(self._initial_guesses_function)}")
@@ -496,8 +510,13 @@ class FCD:
         start_main_algorithm=time.perf_counter()
         self._run_initial_functions()
         
-        y_fit_full=np.pad(self._y_dataset,(0, len(self._y_dataset)), mode='constant', constant_values=self._y_dataset[-1])
-        x_fit_full=np.pad(self._x_dataset,(0, len(self._x_dataset)), mode='constant', constant_values=self._x_dataset[-1])
+        pad_arr=[]
+        if self._max_segment_lengths:
+            pad_arr=self._max_segment_lengths[-1]
+        else:
+            pad_arr=len(self._y_dataset)
+        y_fit_full=np.pad(self._y_dataset,(0, pad_arr+1), mode='constant', constant_values=0.0)
+        x_fit_full=np.pad(self._x_dataset,(0, pad_arr+1), mode='constant', constant_values=0.0)
         results_ordered = []
         if self._settings_args['multi_scale']:
             if self._parallel:            
@@ -529,7 +548,8 @@ class FCD:
         self.results={"SRMSE": srmse_all, "RMSE": rmse_all, "Data scale": data_scale, "Time took": time_took}
         
         if self._verbose>0:
-            print(f"Number of segments in each mode: {self._num_segments_uniform}")
+            if self._settings_args['non_uniform']==False:
+                print(f"Number of segments in each mode: {self._num_segments_uniform}")
             print(f"Decomposition took {time_took:.4f}s")
             utility.show_fitting_plot(self._number_of_modes, self.all_changepoints, self._x_dataset_unscaled,self._y_dataset_unscaled,self.fitted_parameters_modes,self.all_full_initial_guesses,self._functions_config,self._verbose)
         return self.fitted_parameters_modes

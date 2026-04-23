@@ -531,22 +531,6 @@ def squash_into_modes(num_segments_uniform,max_mode):
 
     return num_segments_uniform
 
-def calculate_max_mode(N_full,start_div=5,end_goal=4):
-    """
-    Calculates maximum mathematical mode
-
-    Args:
-        N_full (int): number of data points in dataset
-
-    Returns:
-        number_of_modes (int): Calculated maximum mathematical mode
-    """
-    start_k = N_full // start_div
-    
-    number_of_modes = max(np.ceil(np.log2(start_k / end_goal)), 0) #pre last mode to have at least 4 segments
-
-    return int(number_of_modes)+1 #last mode
-
 def adjust_by_hardware_bucketing(benchmarks, hardware_factor):
     """
     Adjusts reference benchmarks to account for different hardware speeds.
@@ -560,17 +544,16 @@ def adjust_by_hardware_bucketing(benchmarks, hardware_factor):
     """
     adjusted_benchmarks = [(length, speed * hardware_factor) for length, speed in benchmarks]
     return adjusted_benchmarks
-def modify_uniform_num_segments(max_mathematical_mode, N_full):
-    num_seg=max(N_full//5,4)
+def modify_uniform_num_segments(N_full,start_div=5,end_goal=4, speed=2):
+    num_seg=max(N_full//start_div,end_goal)
     num_segments_uniform=[num_seg]
-    
 
-    for k in range(max_mathematical_mode):
-        if k == max_mathematical_mode-1:
-            num_segments_uniform.append(1)
-            continue
-        num_seg=max(num_seg//2,4)
+    while True:
+        num_seg=max(num_seg//speed,end_goal)
         num_segments_uniform.append(num_seg)
+        if num_seg//speed<end_goal:
+            num_segments_uniform.append(1)
+            break
     return num_segments_uniform
 
 def generate_uniform_segmentation(max_mode, y_data_full_np, num_segments_list, multi_scale, num_segments_single):
@@ -673,7 +656,7 @@ def get_fit_values(results_ordered):
         current_res+=1
     return segment_lists_params
 
-def generate_bucketing(max_mode,all_changepoints, custom_benchmarks, config, multi_scale):
+def generate_bucketing(max_mode,all_changepoints, custom_benchmarks, config, multi_scale,non_uniform):
     """
     Generates bucketing list of maximum segment length for optimization
 
@@ -692,7 +675,10 @@ def generate_bucketing(max_mode,all_changepoints, custom_benchmarks, config, mul
     max_segment_lengths=[]
 
     if multi_scale:
-        for m in range(max_mode-1):
+        modes=max_mode-1
+        if non_uniform:
+            modes=max_mode
+        for m in range(modes):
             changepoints_to_fit=len(all_changepoints[m])-1
             segment_lengths_static_tuple = tuple([all_changepoints[m][s+1] - all_changepoints[m][s] + 1 for s in range(changepoints_to_fit)])
             max_segment_lengths.append(max(segment_lengths_static_tuple))
@@ -717,7 +703,7 @@ def generate_bucketing(max_mode,all_changepoints, custom_benchmarks, config, mul
 
     return max_segment_lengths,modes_length_bucketing
 
-def batch_transformation(max_mode, all_changepoints,all_initial_guesses,all_lower_bounds,all_upper_bounds, config,multi_scale, num_segments_single):
+def batch_transformation(max_mode, all_changepoints,all_initial_guesses,all_lower_bounds,all_upper_bounds, config,multi_scale, num_segments_single,non_uniform):
     """
     Transforms initial guesses, changepoints, lower, upper bounds, segment lengths arrays into batches.
 
@@ -737,7 +723,7 @@ def batch_transformation(max_mode, all_changepoints,all_initial_guesses,all_lowe
     upper_list_all=[]
     segment_length_list_all=[]
     for mode in range(max_mode):
-        if not mode==max_mode-1 or (not multi_scale and num_segments_single>1):
+        if not mode==max_mode-1 or (not multi_scale and num_segments_single>1) or non_uniform:
             changepoints_to_fit=len(all_changepoints[mode])-1
             x_fit_list=[]
             y_fit_list=[]
@@ -803,9 +789,6 @@ default_models={model_sin7: ['c0','c1'],model_sin6: ['c0','c1'],model_sin5: ['c0
                 model_quadratic:['c','b'],model_cubic:['d','c'], model_linear:['b',''],model_relation:['b',''],
                 model_decay: ['c',''],model_logistic: ['c',''],model_fourier:['c0','c1'],model_gaussian:['c','']}
 
-default_magnitude_params=[[0,1,4], [0,1,3], [0,2], [0], [0,1], [0,1,2], [0], [0,2], [0], [0,2], [0], [0,1,2,3,4,5,7], [0]]
-default_offset_params=[[5], [4], [3], [2], [2], [3], [1], [1], [2], [4], [3], [8], [3]]
-default_independent_params=[[2,3], [2,5], [1,4], [1,3], [],[],[], [], [1], [1,3], [1,2], [6], [1,2]]
 def get_exact_function_body(user_fn):
     source = inspect.getsource(user_fn)
 

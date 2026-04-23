@@ -1,6 +1,6 @@
 import numpy as np
 from functools import partial
-def initial_guesses_sin(x_dataset,y_dataset,dataset_std,segment_x, segment_y, segment_index, mode_index,max_mode, parameters_configuration=7):
+def initial_guesses_sin(x_dataset,y_dataset,dataset_std,segment_x, segment_y, segment_index, mode_index,last_mode, parameters_configuration=7):
     segment_trend=segment_y[-1]-segment_y[0]
     noise_floor = dataset_std * 1e-1
     noise_floor=np.where(noise_floor<1e-9, 1e-9, noise_floor)
@@ -72,7 +72,7 @@ def initial_guesses_sin(x_dataset,y_dataset,dataset_std,segment_x, segment_y, se
     c0_min=min(segment_y)-safe_span*0.2
     c0_max=max(segment_y)+safe_span*0.2
        
-    if mode_index==max_mode-1:
+    if last_mode:
         b0_start=2 * np.pi / x_span_abs
         dynamic_b0_min=b0_start*0.1
         dynamic_b0_max=b0_start*5.0
@@ -106,7 +106,7 @@ initial_guess_sin7 = partial(initial_guesses_sin, parameters_configuration=7)
 initial_guess_sin6 = partial(initial_guesses_sin, parameters_configuration=6)
 initial_guess_sin5 = partial(initial_guesses_sin, parameters_configuration=5)
 initial_guess_sin4 = partial(initial_guesses_sin, parameters_configuration=4)
-def initial_guess_quadratic(x_dataset,y_dataset,dataset_std,segment_x, segment_y, segment_index, mode_index, max_mode):
+def initial_guess_quadratic(x_dataset,y_dataset,dataset_std,segment_x, segment_y, segment_index, mode_index, last_mode):
     x_span = segment_x[-1]-segment_x[0]
     y_span = segment_y[-1]-segment_y[0]
     if x_span == 0:
@@ -133,7 +133,7 @@ def initial_guess_quadratic(x_dataset,y_dataset,dataset_std,segment_x, segment_y
     ]
 
     return params_initial_guesses, lower_bounds, upper_bounds
-def initial_guess_cubic(x_dataset,y_dataset,dataset_std,segment_x, segment_y, segment_index, mode_index, max_mode):
+def initial_guess_cubic(x_dataset,y_dataset,dataset_std,segment_x, segment_y, segment_index, mode_index, last_mode):
     x_span = segment_x[-1]-segment_x[0]
     y_span = segment_y[-1]-segment_y[0]
     noise_floor = dataset_std * 1e-1
@@ -165,7 +165,7 @@ def initial_guess_cubic(x_dataset,y_dataset,dataset_std,segment_x, segment_y, se
 
     return params_initial_guesses, lower_bounds, upper_bounds
 
-def initial_guess_decay(x_dataset,y_dataset,dataset_std,segment_x, segment_y, segment_index, mode_index, max_mode):
+def initial_guess_decay(x_dataset,y_dataset,dataset_std,segment_x, segment_y, segment_index, mode_index, last_mode):
     x_span = segment_x[-1]-segment_x[0]
     y_span = segment_y[-1]-segment_y[0]
     unit_b=1/abs(x_span)
@@ -188,7 +188,7 @@ def initial_guess_decay(x_dataset,y_dataset,dataset_std,segment_x, segment_y, se
     ]
 
     return params_initial_guesses,lower_bounds,upper_bounds
-def initial_guess_relation(x_dataset,y_dataset,dataset_std,segment_x, segment_y, segment_index, mode_index, max_mode):
+def initial_guess_relation(x_dataset,y_dataset,dataset_std,segment_x, segment_y, segment_index, mode_index, last_mode):
     x_span = segment_x[-1]-segment_x[0]
     y_span = segment_y[-1]-segment_y[0]
     noise_floor = dataset_std * 1e-1
@@ -205,7 +205,7 @@ def initial_guess_relation(x_dataset,y_dataset,dataset_std,segment_x, segment_y,
     upper_bounds = [10 * np.abs(unit_a), np.max(segment_y) + np.abs(y_span), 10 * np.abs(unit_a)]
 
     return params_initial_guesses, lower_bounds, upper_bounds
-def initial_guess_linear(x_dataset,y_dataset,dataset_std,segment_x, segment_y, segment_index, mode_index, max_mode):
+def initial_guess_linear(x_dataset,y_dataset,dataset_std,segment_x, segment_y, segment_index, mode_index, last_mode):
     x_span = segment_x[-1]-segment_x[0]
     y_span = segment_y[-1]-segment_y[0]
     noise_floor = dataset_std * 1e-1
@@ -220,7 +220,7 @@ def initial_guess_linear(x_dataset,y_dataset,dataset_std,segment_x, segment_y, s
     upper_bounds=[10 * np.abs(unit_a),np.max(segment_y) + np.abs(y_span)]
 
     return params_initial_guesses,lower_bounds,upper_bounds
-def initial_guess_gaussian(x_dataset,y_dataset, dataset_std, segment_x, segment_y, segment_index, mode_index, max_mode):
+def initial_guess_gaussian(x_dataset,y_dataset, dataset_std, segment_x, segment_y, segment_index, mode_index, last_mode):
     x_span = segment_x[-1] - segment_x[0]
     y_min, y_max = np.min(segment_y), np.max(segment_y)
     noise_floor = dataset_std * 1e-1
@@ -250,7 +250,7 @@ def initial_guess_gaussian(x_dataset,y_dataset, dataset_std, segment_x, segment_
     c_upper = y_max - y_range * 0.2
 
     return [a_guess, x0_guess, sigma_guess, c0_guess], [a_lower, x0_lower, sigma_lower, c_lower], [a_upper, x0_upper, sigma_upper, c_upper]
-def initial_guess_logistic(x_dataset, y_dataset,dataset_std, segment_x, segment_y, segment_index, mode_index, max_mode):
+def initial_guess_logistic(x_dataset, y_dataset,dataset_std, segment_x, segment_y, segment_index, mode_index, last_mode):
     delta_x = float(segment_x[-1] - segment_x[0])
     if delta_x <= 0: 
         delta_x = 1.0
@@ -283,7 +283,7 @@ def initial_guess_logistic(x_dataset, y_dataset,dataset_std, segment_x, segment_
     ]
 
     return params_initial_guesses, lower_bounds, upper_bounds
-def initial_guess_fourier(x_dataset, y_dataset,dataset_std, segment_x, segment_y, segment_index, mode_index, max_mode):
+def initial_guess_fourier(x_dataset, y_dataset,dataset_std, segment_x, segment_y, segment_index, mode_index, last_mode):
     y_span = segment_y[-1]-segment_y[0]
     span_x=segment_x[-1]-segment_x[0]
     noise_floor = dataset_std * 1e-1
