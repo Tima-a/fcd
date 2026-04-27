@@ -288,6 +288,20 @@ def validate_inputs(x_data, y_data, requested_modes, model, initial_guesses_func
     lengths_match = (num_parameters == len(guess) == len(lo) == len(up))
     if not lengths_match:
         raise ValueError(f"Arrays are not the same length for model, initial guess functions or lower, upper bounds")
+    chpoints = settings_args.get('changepoints_non_uniform')
+    if chpoints is not None:
+        if not isinstance(chpoints, list):
+            raise ValueError(f"Non-uniform changepoints array must be a list, got {type(chpoints)}")
+        if isinstance(chpoints[0], list):
+            for m in chpoints:
+                for ch in m:
+                    if ch<0 or not isinstance(ch, int):
+                        raise ValueError(f"Changepoint indices cannot be negative or float type, got {ch}")
+        else:
+            for ch in chpoints:
+                if ch<0 or not isinstance(ch, int):
+                    raise ValueError(f"Changepoint indices cannot be negative or float type, got {ch}")
+
     min_scale_y=1e-3
     max_scale_y=1e30
     min_scale_x=1e-10
@@ -308,8 +322,9 @@ def validate_inputs(x_data, y_data, requested_modes, model, initial_guesses_func
         raise ValueError("When using custom model and scaling, unscaling function must be given")
     if optimization_settings_args['batch_size'] < 1:
         raise ValueError(f"Batch length ({optimization_settings_args['batch_size']}) cannot be less than 1")
-    if requested_modes<1:
-        raise ValueError(f"Requested number of modes cannot be less than 1(got {requested_modes})")
+    if requested_modes is not None:
+        if requested_modes<1:
+            raise ValueError(f"Requested number of modes cannot be less than 1(got {requested_modes})")
     for name,item in optimization_settings_args.items():
         if item <= 0 and not name == 'bucketing':
             raise ValueError(f"Argument '{name}' must be greater than 0.")
@@ -413,7 +428,14 @@ def find_optimal_configuration(modes_bucketing_data,compilation_cost=2.3, max_k=
             }
             
     return best_config
-
+def parse_args(defaults, user_input):
+    base = defaults.copy()
+    if user_input:
+        invalid = [k for k in user_input if k not in base]
+        if invalid:
+            raise ValueError(f"Invalid keys: {invalid}. Allowed: {list(base.keys())}")
+        base.update(user_input)
+    return base
 def show_fitting_plot(max_mode, all_changepoints, x_data_full_np,y_data_full_np,segment_lists_params,all_full_initial_guesses,functions_config, verbose):
     """
     Shows fitting plot for all modes with original dataset scattered and PELT detected changepoints.
@@ -446,7 +468,7 @@ def show_fitting_plot(max_mode, all_changepoints, x_data_full_np,y_data_full_np,
             popt_mode=popt_list_for_mode[i]
             segment_width = x_data_full_np[changepoint[i+1]-last_start] - x_data_full_np[changepoint[i]]
             x_fit_plot = np.linspace(0, segment_width, 100)
-            if len(all_changepoints[0]) < 300: # if first mode has less than 300 segments show lines
+            if len(all_changepoints[mode]) < 300: # if first mode has less than 300 segments show lines
                 ax.axvline(x=x_data_full_np[changepoint[i]], color='darkslategray', linestyle= '--', linewidth= 1.2, alpha= 0.6)
             
             popt_list_for_mode = segment_lists_params[mode]
@@ -474,11 +496,9 @@ def show_fitting_plot(max_mode, all_changepoints, x_data_full_np,y_data_full_np,
     if max_mode > 1:
         for i in range(max_mode, rows * cols):
             fig.delaxes(axes_flat[i])
-    fig.supylabel('Voltage ($\mu V$)', fontsize=12, x=0.05)
-    fig.supxlabel('Time ($s$)', fontsize=12)
-    #fig.supylabel('Voltage ($\mu$V)', fontsize=12, x=0.05)
+    #fig.supylabel('Voltage ($\mu V$)', fontsize=12, x=0.05)
     #fig.supxlabel('Time ($s$)', fontsize=12)
-
+    
     fig.tight_layout(rect=[0, 0.03, 1, 0.95]) 
     plt.show() 
     plt.close('all')

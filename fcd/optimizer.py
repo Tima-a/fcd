@@ -305,7 +305,6 @@ def solve_step(p, r, J, lam,ridge):
     bad = jnp.logical_or(jnp.any(jnp.isnan(A)), jnp.any(jnp.isinf(A)))
     diag_H = jnp.diag(H)
 
-
     fallback_scale = jnp.where(jnp.isfinite(jnp.mean(diag_H)), jnp.mean(diag_H), 1.0)
     A_fallback = (lam + ridge + fallback_scale) * jnp.eye(p.size, dtype=DTYPE)
     

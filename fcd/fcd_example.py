@@ -2,9 +2,15 @@ from mode_fitting import FCD
 import utility
 import utility_guesses
 import numpy as np
+
 np.random.seed(112)
+
 #Set datasets
-y=np.load(f"test_datasets/cryptocoin_tests/test3.npy")
+#eeg_data_full = (np.loadtxt('test_datasets/other_tests/s00.csv', usecols=1, delimiter=','))
+#x_data_full=np.linspace(0,60,len(eeg_data_full))
+#y=eeg_data_full[:1000]
+#x=x_data_full[:1000]
+y=np.load(f"test_datasets/cryptocoin_tests/test3.npy")[:1000]
 x=np.arange(len(y))
 #arr=np.array(np.random.randint(5,1000, 10)) #100 times
 #arr=list(np.cumsum(arr))
@@ -24,15 +30,17 @@ x=np.arange(len(y))
 #    row = np.concatenate([[0], interior_points, [9999]])
 #    
 #    changepoints_list.append(list(row.astype(int)))
-#settings_args={'non_uniform': True, 'changepoints_non_uniform': list_uni}
-#optimization_settings_args={"batch_size": 5}
 #Initialize FCD runner
+arr_nu=np.linspace(0, len(y), 13)
+arr_nu=arr_nu.astype(int).tolist()
+settings_args={'non_uniform': True, 'changepoints_non_uniform': arr_nu}
+#optimization_settings_args={'max_iters': 1000, 'ftol': 1e-12, 'xtol': 1e-12}
 fcd = FCD(
     x_dataset=x, y_dataset=y,
     model=utility.model_sin6,
     initial_guesses_function=utility_guesses.initial_guess_sin6,
     parallel=True,
-    #settings_args=settings_args,
+    settings_args=settings_args,
     verbose=1
 )
 

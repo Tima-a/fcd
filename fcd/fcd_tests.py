@@ -119,20 +119,14 @@ def main_fitting():
     my_settings = {'scaling': True, 'warmup': False}
     optimization_settings_args={"batch_size": 5}
     mode_fitting_runner=mode_fitting.FCD(x_dataset=np.full(10000,1),y_dataset=np.full(10000,1), model=utility.model_sin7, initial_guesses_function=utility_guesses.initial_guess_sin7,settings_args=my_settings,optimization_settings_args=optimization_settings_args,parallel=True,verbose = 1)
-    settings_args={}
     warning_segs=[]
     num_testing=30
     average_srmse_tests=[]
     average_rmse_tests=[]
     time_tests=[]
-    for k in range(13,num_testing+1):
+    for k in range(2,num_testing+1):
         x_dataset, y_dataset,model, init_guess_model=test_datasets(k) 
         print(f"Running test on seed {k}")
-        if utility.get_name(model) == 'model_power':
-            settings_args={'scaling': False}
-        else:
-            settings_args={}
-        mode_fitting_runner.update_settings(settings_args, {}, {})
         mode_fitting_runner.set_data(x_dataset, y_dataset)
         mode_fitting_runner.set_model(model,init_guess_model)
         mode_fitting_runner.run()

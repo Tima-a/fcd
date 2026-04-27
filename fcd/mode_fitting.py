@@ -34,7 +34,7 @@ class FCD:
                 scaling (bool): Apply standard scaling, defaults to True.
                 unscaling_function (Callable): Unscaling function which has to be defined if custom_fitting is used.
                 requested_modes (int): Number of modes to decompose. If None, number of modes is calculated using logarithmic equation.
-                warmup (bool): Use warmup. Defaults to True
+                warmup (bool): Use warmup. Defaults to False
                 non_uniform (bool): Use non-uniform segmentation. If true, for multi-scale analysis user has to provide all changepoints for each mode, for single analysis one changepoint array.
                 changepoints_non_uniform (array-like, optional): Changepoint indices for non-uniform segmentation. 
                 hardware_factor (float): Multiplier for bucketing factor. Defaults to 1.0
@@ -53,19 +53,14 @@ class FCD:
             fitted_parameters_modes (list) - final optimized parameters for all segments and modes 
         '''
         defaults_continuity_args={'custom_fitting': False, 'value_parameter_fix': '', 'derivative_parameter_fix': '', 'value_continuity': True, 'derivative_continuity': True}
-        self._continuity_args=defaults_continuity_args
-        if continuity_args:
-            self._continuity_args.update(continuity_args)
+        self._continuity_args=utility.parse_args(defaults_continuity_args,continuity_args)
+        
 
         default_optimization_settings_args={'batch_size': 5, 'max_iters': 500, 'ftol': 1e-3, 'xtol': 1e-3, 'initial_lam': 1e-1, 'bucketing': True}
-        self._optimization_settings_args=default_optimization_settings_args
-        if optimization_settings_args:
-            self._optimization_settings_args.update(optimization_settings_args)
+        self._optimization_settings_args=utility.parse_args(default_optimization_settings_args,optimization_settings_args)
 
-        default_settings_args={'multi_scale': True, 'num_segments_single': 1, 'scaling': True, 'unscaling_function': None, 'requested_modes': None, 'warmup': True, 'non_uniform': False, 'changepoints_non_uniform': None, 'hardware_factor': 1.0}
-        self._settings_args=default_settings_args
-        if settings_args:
-            self._settings_args.update(settings_args)
+        default_settings_args={'multi_scale': True, 'num_segments_single': 1, 'scaling': True, 'unscaling_function': None, 'requested_modes': None, 'warmup': False, 'non_uniform': False, 'changepoints_non_uniform': None, 'hardware_factor': 1.0}
+        self._settings_args=utility.parse_args(default_settings_args,settings_args)
 
         self._x_dataset_unscaled = x_dataset
         self._y_dataset_unscaled = y_dataset
@@ -94,6 +89,7 @@ class FCD:
         self._functions_config=None
         self.results = None
         self.fitted_parameters_modes = None
+        utility.validate_inputs(self._x_dataset, self._y_dataset, self._number_of_modes, self._model, self._initial_guesses_function, self._optimization_settings_args,self._settings_args, self._continuity_args)
         if x_dataset is not None and y_dataset is not None:
             self._initialize()
     def _generate_initial_guesses(self):
@@ -482,7 +478,7 @@ class FCD:
             print(f"JAX compilation is triggered as shapes/variables are different.")
             self._initialize()
             self._compiled_signatures.append(hash_text)
-        utility.validate_inputs(self._x_dataset, self._y_dataset, self._number_of_modes, self._model, self._initial_guesses_function, self._optimization_settings_args,self._settings_args, self._continuity_args)
+        
 
         self._generate_initial_guesses()
         params_list_batched, changepoint_list_batched,lower_list_batched,upper_list_batched,segment_length_list_batched = utility.batch_transformation(self._number_of_modes,self.all_changepoints,self.all_initial_guesses,self.all_lower_bounds,self.all_upper_bounds, self._fitting_config,self._settings_args['multi_scale'],self._settings_args['num_segments_single'], self._settings_args['non_uniform'])

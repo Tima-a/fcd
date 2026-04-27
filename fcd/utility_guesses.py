@@ -1,6 +1,20 @@
 import numpy as np
 from functools import partial
-def initial_guesses_sin(x_dataset,y_dataset,dataset_std,segment_x, segment_y, segment_index, mode_index,last_mode, parameters_configuration=7):
+def fast_robust_freq(y_detrended, x_span_abs):
+    raw_crossings = np.sum(np.diff(np.sign(y_detrended)) != 0)
+    
+    thresh = np.std(y_detrended) * 0.3
+    states = np.zeros_like(y_detrended)
+    states[y_detrended > thresh] = 1
+    states[y_detrended < -thresh] = -1
+    nonzero_states = states[states != 0]
+    robust_crossings = np.sum(np.diff(nonzero_states) != 0) if len(nonzero_states) > 0 else 0
+
+    if len(y_detrended) < 10 or robust_crossings == 0:
+        return max(raw_crossings, 1.0) 
+    
+    return robust_crossings
+def initial_guesses_sin(x_dataset,y_dataset,dataset_std,segment_x, segment_y, segment_index, mode_index,last_mode, points_per_cycle_limit = 5.0, parameters_configuration=7):
     segment_trend=segment_y[-1]-segment_y[0]
     noise_floor = dataset_std * 1e-1
     noise_floor=np.where(noise_floor<1e-9, 1e-9, noise_floor)
@@ -14,7 +28,7 @@ def initial_guesses_sin(x_dataset,y_dataset,dataset_std,segment_x, segment_y, se
 
     safe_a0_max = safe_span * 0.8
     y_to_x_ratio = max(segment_trend / x_span, 1e-12)       
-    n_buffer = max(1, len(segment_y) // 5) 
+    n_buffer = max(1, len(segment_y) // 10) 
 
     y_start_stable = np.mean(segment_y[:n_buffer])
     y_end_stable = np.mean(segment_y[-n_buffer:])
@@ -32,19 +46,18 @@ def initial_guesses_sin(x_dataset,y_dataset,dataset_std,segment_x, segment_y, se
     a0_start = min(a0_start, segment_span_y * 1.1)
     a0_start = max(a0_start, 0.0)
     x_span_abs=abs(x_span)
-    max_freq = (2.0 * np.pi) / x_span_abs
     
-    zero_crossings = np.where(np.diff(np.sign(y_detrended)))[0]
-    num_cycles = len(zero_crossings) / 2.0
-    detected_freq = (2 * np.pi * num_cycles) / x_span_abs
+    num_cycles = fast_robust_freq(y_detrended, x_span_abs)
+
+    detected_freq = (np.pi * num_cycles) / x_span_abs
     
-    b0_start = np.clip(detected_freq, (2 * np.pi / x_span_abs), max_freq * 0.9)
+    b0_start = detected_freq
     estimated_b0 = b0_start
-    dynamic_b0_min = estimated_b0 * 0.3
+    dynamic_b0_min = estimated_b0 * 0.1
     
-    dynamic_b0_max = min(estimated_b0 * 1.7, max_freq)
-    freq_headroom = max_freq - b0_start
-    dynamic_b1_max = max(abs(freq_headroom / (5.0 * x_span)),1e-12)
+    dynamic_b0_max = estimated_b0 * 2.0
+    freq_headroom = b0_start
+    dynamic_b1_max = max(abs(freq_headroom / (2.0 * x_span)),1e-12)
     dynamic_b1_min = -dynamic_b1_max
 
     b1_start = (dynamic_b1_max+dynamic_b1_min)/2.0
@@ -62,50 +75,45 @@ def initial_guesses_sin(x_dataset,y_dataset,dataset_std,segment_x, segment_y, se
     
         d0_start = np.arcsin(y0_clipped)
                 
-    safe_a0_max = safe_span*2.0
+    y_detrended_span=max(max(y_detrended)-min(y_detrended), noise_floor)
+    safe_a0_max = y_detrended_span*2.0
+    safe_a0_min = np.std(y_detrended)*0.8
+
     
-    safe_a1_max = abs(safe_span / x_span)*2.0
+    safe_a1_max = abs(y_detrended_span / x_span)*2.0
     
     safe_a1_min = -safe_a1_max
     y_to_x_ratio=max(abs(segment_trend/x_span)*2.0, abs(c1_start))
     
     c0_min=min(segment_y)-safe_span*0.2
     c0_max=max(segment_y)+safe_span*0.2
-       
-    if last_mode:
-        b0_start=2 * np.pi / x_span_abs
-        dynamic_b0_min=b0_start*0.1
-        dynamic_b0_max=b0_start*5.0
-        a0_start=safe_span
-        safe_a0_max=safe_span*10.0
-        c0_min=min(segment_y)-safe_span
-        c0_max=max(segment_y)+safe_span
-
+    
     original_p0=[]
     lower_bounds2=[]
     upper_bounds2=[]
     if parameters_configuration==7: #a1,a0,b1,b0,c1,c0,D
         original_p0 = np.array([a1_start, a0_start, b1_start, b0_start, c1_start, c0_start, d0_start])
-        lower_bounds2 = [safe_a1_min, -safe_a0_max, dynamic_b1_min, dynamic_b0_min, -1*y_to_x_ratio, c0_min,-np.pi]
+        lower_bounds2 = [safe_a1_min, safe_a0_min, dynamic_b1_min, dynamic_b0_min, -1*y_to_x_ratio, c0_min,-np.pi]
         upper_bounds2 = [safe_a1_max, safe_a0_max,dynamic_b1_max, dynamic_b0_max,y_to_x_ratio,c0_max, np.pi]
     elif parameters_configuration==6: #a1,a0,b0,c1,c0,D
         original_p0 = np.array([a1_start, a0_start, b0_start, c1_start, c0_start, d0_start])
-        lower_bounds2 = [safe_a1_min,-safe_a0_max, dynamic_b0_min, -1*y_to_x_ratio, c0_min,-np.pi]
+        lower_bounds2 = [safe_a1_min,safe_a0_min, dynamic_b0_min, -1*y_to_x_ratio, c0_min,-np.pi]
         upper_bounds2 = [safe_a1_max,safe_a0_max,dynamic_b0_max,y_to_x_ratio,c0_max, np.pi]
     elif parameters_configuration==5: #a0,b0,c1,c0,D
         original_p0 = np.array([a0_start, b0_start, c1_start, c0_start, d0_start])
-        lower_bounds2 = [-safe_a0_max, dynamic_b0_min, -1*y_to_x_ratio, c0_min,-np.pi]
+        lower_bounds2 = [safe_a0_min, dynamic_b0_min, -1*y_to_x_ratio, c0_min,-np.pi]
         upper_bounds2 = [safe_a0_max,dynamic_b0_max,y_to_x_ratio,c0_max, np.pi]
     elif parameters_configuration==4: #a0,b0,c0,D
         original_p0 = np.array([a0_start, b0_start, c0_start, d0_start])
-        lower_bounds2 = [-safe_a0_max, dynamic_b0_min, c0_min,-np.pi]
+        lower_bounds2 = [safe_a0_min, dynamic_b0_min, c0_min,-np.pi]
         upper_bounds2 = [safe_a0_max,dynamic_b0_max, c0_max, np.pi]
     return original_p0,lower_bounds2,upper_bounds2
 
-initial_guess_sin7 = partial(initial_guesses_sin, parameters_configuration=7)
-initial_guess_sin6 = partial(initial_guesses_sin, parameters_configuration=6)
-initial_guess_sin5 = partial(initial_guesses_sin, parameters_configuration=5)
-initial_guess_sin4 = partial(initial_guesses_sin, parameters_configuration=4)
+POINTS_CYCLE_LIMIT = 5.0
+initial_guess_sin7 = partial(initial_guesses_sin, points_per_cycle_limit=POINTS_CYCLE_LIMIT, parameters_configuration=7)
+initial_guess_sin6 = partial(initial_guesses_sin, points_per_cycle_limit=POINTS_CYCLE_LIMIT, parameters_configuration=6)
+initial_guess_sin5 = partial(initial_guesses_sin, points_per_cycle_limit=POINTS_CYCLE_LIMIT,parameters_configuration=5)
+initial_guess_sin4 = partial(initial_guesses_sin, points_per_cycle_limit=POINTS_CYCLE_LIMIT,parameters_configuration=4)
 def initial_guess_quadratic(x_dataset,y_dataset,dataset_std,segment_x, segment_y, segment_index, mode_index, last_mode):
     x_span = segment_x[-1]-segment_x[0]
     y_span = segment_y[-1]-segment_y[0]
